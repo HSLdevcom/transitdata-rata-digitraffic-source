@@ -2,26 +2,60 @@ package fi.hsl.transitdata.rata_digitraffic
 
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.Station
 import fi.hsl.transitdata.rata_digitraffic.model.doi.StopPoint
-import fi.hsl.transitdata.rata_digitraffic.utils.LoggerDelegate
+import fi.hsl.transitdata.rata_digitraffic.source.DoiSource
+import fi.hsl.transitdata.rata_digitraffic.source.RataDigitrafficStationSource
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.time.delay
+import mu.KotlinLogging
+import java.sql.Connection
+import java.time.Duration
+import java.time.LocalDate
+import java.time.LocalDateTime
 import kotlin.math.abs
 import kotlin.math.min
 
-class DoiStopMatcher(private val doiStops: Collection<StopPoint>, private val stations: Collection<Station>) {
+class DoiStopMatcher(private val doiSource : DoiSource, private val stations: Collection<Station>) {
+
     companion object {
         private const val MAX_DISTANCE_FROM_CLOSEST = 200 //200 meters
 
-        private val log by LoggerDelegate()
+        fun newInstance(doiSource : DoiSource, stations: Collection<Station>) : DoiStopMatcher{
+            val doiStopMatcher = DoiStopMatcher(doiSource, stations)
+            GlobalScope.launch(Dispatchers.IO){
+                doiStopMatcher.resetCollections()
+                while(true){
+                    val tomorrow = LocalDateTime.now().plusDays(1).withHour(0).withMinute(0).withSecond(0)
+                    val now = LocalDateTime.now()
+                    delay(Duration.between(now, tomorrow))
+                    doiStopMatcher.resetCollections()
+                }
+            }.start()
+            return doiStopMatcher
+        }
     }
+
+    lateinit var doiStops: Collection<StopPoint>
+
+    private lateinit var stationToDoiStops: Map<Station, List<StopPoint>>
+
+    suspend fun resetCollections(){
+        doiStops = doiSource.getStopPointsForRailwayStations(LocalDate.now())
+        stationToDoiStops =
+            stations.associate { station ->
+                val distanceToClosest = doiStops.map { stopPoint -> stopPoint.location.distanceTo(station.location) }.min()
+                return@associate station to doiStops.filter { stopPoint ->
+                    distanceToClosest != null && stopPoint.location.distanceTo(station.location) < (distanceToClosest + MAX_DISTANCE_FROM_CLOSEST)
+                }
+            }
+    }
+
+    private val log = KotlinLogging.logger {}
 
     private val stationsByShortCode = stations.associateBy(keySelector = { station -> station.stationShortCode })
 
-    private val stationToDoiStops =
-        stations.associate { station ->
-            val distanceToClosest = doiStops.map { stopPoint -> stopPoint.location.distanceTo(station.location) }.min()
-            return@associate station to doiStops.filter { stopPoint ->
-                distanceToClosest != null && stopPoint.location.distanceTo(station.location) < (distanceToClosest + MAX_DISTANCE_FROM_CLOSEST)
-            }
-        }
+
 
     fun checkIfStationContainsStop(stationShortCode: String, stopNumber: String): Boolean {
         val doiStops = stationsByShortCode[stationShortCode]?.let { station -> stationToDoiStops[station] }
@@ -48,4 +82,6 @@ class DoiStopMatcher(private val doiStops: Collection<StopPoint>, private val st
             }
         }
     }
+
+
 }

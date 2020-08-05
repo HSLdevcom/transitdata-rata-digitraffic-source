@@ -8,7 +8,7 @@ import fi.hsl.common.transitdata.TransitdataProperties
 import fi.hsl.common.transitdata.TransitdataSchema
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.Train
 import fi.hsl.transitdata.rata_digitraffic.utils.JsonHelper
-import fi.hsl.transitdata.rata_digitraffic.utils.LoggerDelegate
+import mu.KotlinLogging
 import org.apache.pulsar.client.api.Consumer
 import org.apache.pulsar.client.api.Message
 import org.apache.pulsar.client.api.MessageId
@@ -17,9 +17,8 @@ import java.time.Instant
 
 
 class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiStopMatcher, var doiTripMatcher: DoiTripMatcher) : IMessageHandler {
-    companion object {
-        val log by LoggerDelegate()
-    }
+
+    private val log = KotlinLogging.logger {}
 
     private val consumer: Consumer<ByteArray> = context.consumer
     private val producer: Producer<ByteArray> = context.producer

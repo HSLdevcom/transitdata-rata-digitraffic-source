@@ -4,19 +4,14 @@ import com.google.transit.realtime.GtfsRealtime
 import fi.hsl.common.transitdata.RouteIdUtils
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.TimetableRow
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.Train
-import fi.hsl.transitdata.rata_digitraffic.utils.LoggerDelegate
+import mu.KotlinLogging
 import java.time.Instant
 
 class TripUpdateBuilder(private val doiStopMatcher: DoiStopMatcher, private val doiTripMatcher: DoiTripMatcher) {
-    companion object {
-        val log by LoggerDelegate()
-    }
+    private val log = KotlinLogging.logger {}
 
     fun buildTripUpdate(train: Train, timestamp: Instant): GtfsRealtime.TripUpdate? {
-        val tripInfo = doiTripMatcher.matchTrainToTrip(train)
-        if (tripInfo == null) {
-            return null
-        }
+        val tripInfo = doiTripMatcher.matchTrainToTrip(train) ?: return null
 
         val trip = GtfsRealtime.TripDescriptor.newBuilder()
                 .setRouteId(RouteIdUtils.normalizeRouteId(tripInfo.routeId))

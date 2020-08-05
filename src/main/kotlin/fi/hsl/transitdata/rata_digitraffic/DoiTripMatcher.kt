@@ -3,13 +3,37 @@ package fi.hsl.transitdata.rata_digitraffic
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.TimetableRow
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.Train
 import fi.hsl.transitdata.rata_digitraffic.model.doi.TripInfo
-import fi.hsl.transitdata.rata_digitraffic.utils.LoggerDelegate
+import fi.hsl.transitdata.rata_digitraffic.source.DoiSource
+import kotlinx.coroutines.*
+import kotlinx.coroutines.time.delay
+import mu.KotlinLogging
+import java.time.Duration
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 
-class DoiTripMatcher(private val zoneId: ZoneId, private val doiTrips: Collection<TripInfo>, private val doiStopMatcher: DoiStopMatcher) {
-    companion object {
-        private val log by LoggerDelegate()
+class DoiTripMatcher(private val zoneId: ZoneId, private val doiSource : DoiSource, private val doiStopMatcher: DoiStopMatcher) {
+    private val log = KotlinLogging.logger {}
+    private lateinit var doiTrips: Collection<TripInfo>
+
+    companion object{
+        fun newInstance(zoneId: ZoneId, doiSource : DoiSource, doiStopMatcher: DoiStopMatcher) : DoiTripMatcher{
+            val doiTripMatcher = DoiTripMatcher(zoneId, doiSource, doiStopMatcher)
+            GlobalScope.launch(Dispatchers.IO){
+                doiTripMatcher.resetCollections()
+                while(true){
+                    val tomorrow = LocalDateTime.now().plusDays(1).withHour(0).withMinute(0).withSecond(0)
+                    val now = LocalDateTime.now()
+                    delay(Duration.between(now, tomorrow))
+                    doiTripMatcher.resetCollections()
+                }
+            }.start()
+            return doiTripMatcher
+        }
+    }
+
+    suspend fun resetCollections(){
+        doiTrips = doiSource.getTrainTrips(LocalDate.now(), 7)
     }
 
     fun matchTrainToTrip(train: Train): TripInfo? {
