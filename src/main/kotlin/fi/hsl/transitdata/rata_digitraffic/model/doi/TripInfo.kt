@@ -30,10 +30,10 @@ data class TripInfo(
         }
 
         private fun getTimeAsLocalDateTime(date: String, time: Int): LocalDateTime {
-            val timeAfterMidnight = time % ONE_DAY_IN_SECONDS; //Time can be over 24 hours, e.g. 28:00:00 would be 4am
-            val daysAfterDate = time / ONE_DAY_IN_SECONDS; //Find actual date
+            val timeAfterMidnight = time % ONE_DAY_IN_SECONDS //Time can be over 24 hours, e.g. 28:00:00 would be 4am
+            val daysAfterDate = time / ONE_DAY_IN_SECONDS //Find actual date
 
-            return LocalDate.parse(date, DateTimeFormatter.BASIC_ISO_DATE).plusDays(daysAfterDate).atTime(LocalTime.ofSecondOfDay(timeAfterMidnight));
+            return LocalDate.parse(date, DateTimeFormatter.BASIC_ISO_DATE).plusDays(daysAfterDate).atTime(LocalTime.ofSecondOfDay(timeAfterMidnight))
         }
     }
 

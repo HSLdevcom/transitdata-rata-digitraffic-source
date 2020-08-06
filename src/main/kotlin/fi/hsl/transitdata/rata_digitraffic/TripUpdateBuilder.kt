@@ -80,10 +80,10 @@ class TripUpdateBuilder(private val doiStopMatcher: DoiStopMatcher, private val 
                 .setTime((timetableRow.actualTime ?: timetableRow.liveEstimateTime)!!.toEpochSecond())
 
         if (timetableRow.actualTime != null) {
-            builder.setUncertainty(0)
+            builder.uncertainty = 0
         }
 
-        return builder.build();
+        return builder.build()
     }
 
     private fun mergeTimetableRows(timetableRows: Collection<TimetableRow>): Collection<MergedTimetableRow> {
