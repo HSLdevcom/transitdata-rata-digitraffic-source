@@ -30,7 +30,7 @@ cache:
   directories:
     - ~/.m2
 script:
-  - gradlew clean jar
+  - ./gradlew clean shadowJar
   - set -e
   - ./.travis/check_semver
   - docker build --tag "${DOCKER_LOCAL}" .
