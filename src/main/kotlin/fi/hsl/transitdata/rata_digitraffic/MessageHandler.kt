@@ -60,7 +60,7 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
                 .thenRun {}
     }
 
-    private fun sendPulsarMessage(received: MessageId, tripUpdate: GtfsRealtime.TripUpdate, timestamp: Long) {
+    private fun sendPulsarMessage(received: MessageId, tripUpdate: GtfsRealtime.FeedMessage, timestamp: Long) {
         producer.newMessage() //.key(dvjId) //TODO think about this
                 .eventTime(timestamp)
                 .property(TransitdataProperties.KEY_PROTOBUF_SCHEMA, TransitdataProperties.ProtobufSchema.GTFS_TripUpdate.toString())
