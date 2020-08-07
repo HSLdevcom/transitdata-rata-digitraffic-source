@@ -6,6 +6,7 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 data class TripInfo(
+        val dvjId: String,
         val routeId: String,
         val startDate: String,
         val startTime: String,

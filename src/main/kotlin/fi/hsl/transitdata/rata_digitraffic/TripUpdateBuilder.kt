@@ -1,6 +1,7 @@
 package fi.hsl.transitdata.rata_digitraffic
 
 import com.google.transit.realtime.GtfsRealtime
+import fi.hsl.common.gtfsrt.FeedMessageFactory
 import fi.hsl.common.transitdata.RouteIdUtils
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.TimetableRow
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.Train
@@ -10,7 +11,7 @@ import java.time.Instant
 class TripUpdateBuilder(private val doiStopMatcher: DoiStopMatcher, private val doiTripMatcher: DoiTripMatcher) {
     private val log = KotlinLogging.logger {}
 
-    fun buildTripUpdate(train: Train, timestamp: Instant): GtfsRealtime.TripUpdate? {
+    fun buildTripUpdate(train: Train, timestamp: Instant): GtfsRealtime.FeedMessage? {
         val tripInfo = doiTripMatcher.matchTrainToTrip(train) ?: return null
 
         val trip = GtfsRealtime.TripDescriptor.newBuilder()
@@ -32,7 +33,7 @@ class TripUpdateBuilder(private val doiStopMatcher: DoiStopMatcher, private val 
 
         //Train was cancelled, no need to add stop time updates
         if (trip.scheduleRelationship == GtfsRealtime.TripDescriptor.ScheduleRelationship.CANCELED) {
-            return tripUpdateBuilder.build()
+            return FeedMessageFactory.createDifferentialFeedMessage(tripInfo.dvjId, tripUpdateBuilder.build(), timestamp.epochSecond)
         }
 
         val commercialStopRows = train.timeTableRows.filter { timetableRow -> timetableRow.trainStopping && timetableRow.commercialStop == true }
@@ -72,7 +73,7 @@ class TripUpdateBuilder(private val doiStopMatcher: DoiStopMatcher, private val 
 
         tripUpdateBuilder.addAllStopTimeUpdate(stopTimeUpdates)
 
-        return tripUpdateBuilder.build()
+        return FeedMessageFactory.createDifferentialFeedMessage(tripInfo.dvjId, tripUpdateBuilder.build(), timestamp.epochSecond)
     }
 
     private fun timetableRowToStopTimeEvent(timetableRow: TimetableRow): GtfsRealtime.TripUpdate.StopTimeEvent {
