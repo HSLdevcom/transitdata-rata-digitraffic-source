@@ -98,6 +98,7 @@ class DoiSource(private val connection: Connection) {
 
             return@use results.iterator { row ->
                         TripInfo(
+                            row.getString("dvj_id"),
                             row.getString("route"),
                             row.getString("operating_day"),
                             row.getString("start_time"),
