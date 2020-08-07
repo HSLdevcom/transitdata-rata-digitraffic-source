@@ -12,13 +12,13 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 
-class DoiTripMatcher(private val zoneId: ZoneId, private val doiSource : DoiSource, private val doiStopMatcher: DoiStopMatcher) {
+class DoiTripMatcher(private val zoneId: ZoneId, private val doiQueryFutureDays: Int, private val doiSource : DoiSource, private val doiStopMatcher: DoiStopMatcher) {
     private val log = KotlinLogging.logger {}
     private lateinit var doiTrips: Collection<TripInfo>
 
     companion object{
-        fun newInstance(zoneId: ZoneId, doiSource : DoiSource, doiStopMatcher: DoiStopMatcher) : DoiTripMatcher{
-            val doiTripMatcher = DoiTripMatcher(zoneId, doiSource, doiStopMatcher)
+        fun newInstance(zoneId: ZoneId, queryFutureDays: Int, doiSource : DoiSource, doiStopMatcher: DoiStopMatcher) : DoiTripMatcher{
+            val doiTripMatcher = DoiTripMatcher(zoneId, queryFutureDays, doiSource, doiStopMatcher)
             GlobalScope.launch(Dispatchers.IO){
                 doiTripMatcher.resetCollections()
                 while(true){
@@ -33,7 +33,7 @@ class DoiTripMatcher(private val zoneId: ZoneId, private val doiSource : DoiSour
     }
 
     suspend fun resetCollections(){
-        doiTrips = doiSource.getTrainTrips(LocalDate.now(), 7)
+        doiTrips = doiSource.getTrainTrips(LocalDate.now(), doiQueryFutureDays.toLong())
     }
 
     fun matchTrainToTrip(train: Train): TripInfo? {
