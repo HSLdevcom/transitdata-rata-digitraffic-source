@@ -29,17 +29,18 @@ fun main(vararg args: String) {
 
     try {
         DriverManager.getConnection(connectionString).use { connection ->
-        PulsarApplication.newInstance(config).use { app ->
-            val context = app.context
             val doiSource = DoiSource(connection)
             val stationSource = RataDigitrafficStationSource(client)
             val stations = stationSource.getStations()
             val doiStopMatcher = DoiStopMatcher.newInstance(doiSource, stations)
             val doiTripMatcher = DoiTripMatcher.newInstance(doiTimezone, doiQueryFutureDays, doiSource, doiStopMatcher)
-            val processor = MessageHandler(context, doiStopMatcher, doiTripMatcher)
-            val healthServer = context.healthServer
-            app.launchWithHandler(processor)
-        }}
+            PulsarApplication.newInstance(config).use { app ->
+                val context = app.context
+                val processor = MessageHandler(context, doiStopMatcher, doiTripMatcher)
+                val healthServer = context.healthServer
+                app.launchWithHandler(processor)
+            }
+        }
     } catch (e: Exception) {
         log.error("Exception at main", e)
     }

@@ -4,9 +4,7 @@ import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.Station
 import fi.hsl.transitdata.rata_digitraffic.model.doi.StopPoint
 import fi.hsl.transitdata.rata_digitraffic.source.DoiSource
 import fi.hsl.transitdata.rata_digitraffic.source.RataDigitrafficStationSource
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import kotlinx.coroutines.time.delay
 import mu.KotlinLogging
 import java.sql.Connection
@@ -23,13 +21,13 @@ class DoiStopMatcher(private val doiSource : DoiSource, private val stations: Co
 
         fun newInstance(doiSource : DoiSource, stations: Collection<Station>) : DoiStopMatcher{
             val doiStopMatcher = DoiStopMatcher(doiSource, stations)
+            doiStopMatcher.resetCollections()
             GlobalScope.launch(Dispatchers.IO){
-                doiStopMatcher.resetCollections()
                 while(true){
                     val tomorrow = LocalDateTime.now().plusDays(1).withHour(0).withMinute(0).withSecond(0)
                     val now = LocalDateTime.now()
                     delay(Duration.between(now, tomorrow))
-                    doiStopMatcher.resetCollections()
+                    doiStopMatcher.resetCollectionsAsync()
                 }
             }.start()
             return doiStopMatcher
@@ -40,7 +38,18 @@ class DoiStopMatcher(private val doiSource : DoiSource, private val stations: Co
 
     private lateinit var stationToDoiStops: Map<Station, List<StopPoint>>
 
-    suspend fun resetCollections(){
+    fun resetCollections(){
+        log.debug("Reset collections")
+        runBlocking{
+            withContext(Dispatchers.IO){
+                resetCollectionsAsync()
+            }
+        }
+    }
+
+
+    suspend fun resetCollectionsAsync(){
+        log.debug("Reset collections async")
         doiStops = doiSource.getStopPointsForRailwayStations(LocalDate.now())
         stationToDoiStops =
             stations.associate { station ->
@@ -49,6 +58,7 @@ class DoiStopMatcher(private val doiSource : DoiSource, private val stations: Co
                     distanceToClosest != null && stopPoint.location.distanceTo(station.location) < (distanceToClosest + MAX_DISTANCE_FROM_CLOSEST)
                 }
             }
+        log.debug("Reset collections async done")
     }
 
     private val log = KotlinLogging.logger {}

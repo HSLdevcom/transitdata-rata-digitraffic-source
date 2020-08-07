@@ -19,21 +19,32 @@ class DoiTripMatcher(private val zoneId: ZoneId, private val doiQueryFutureDays:
     companion object{
         fun newInstance(zoneId: ZoneId, queryFutureDays: Int, doiSource : DoiSource, doiStopMatcher: DoiStopMatcher) : DoiTripMatcher{
             val doiTripMatcher = DoiTripMatcher(zoneId, queryFutureDays, doiSource, doiStopMatcher)
+            doiTripMatcher.resetCollections()
             GlobalScope.launch(Dispatchers.IO){
-                doiTripMatcher.resetCollections()
                 while(true){
                     val tomorrow = LocalDateTime.now().plusDays(1).withHour(0).withMinute(0).withSecond(0)
                     val now = LocalDateTime.now()
                     delay(Duration.between(now, tomorrow))
-                    doiTripMatcher.resetCollections()
+                    doiTripMatcher.resetCollectionsAsync()
                 }
             }.start()
             return doiTripMatcher
         }
     }
 
-    suspend fun resetCollections(){
+    fun resetCollections(){
+        log.debug("Reset collections")
+        runBlocking{
+            withContext(Dispatchers.IO){
+                resetCollectionsAsync()
+            }
+        }
+    }
+
+    suspend fun resetCollectionsAsync(){
+        log.debug("Reset collections async")
         doiTrips = doiSource.getTrainTrips(LocalDate.now(), doiQueryFutureDays.toLong())
+        log.debug("Reset collections async done")
     }
 
     fun matchTrainToTrip(train: Train): TripInfo? {
