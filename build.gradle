@@ -24,7 +24,8 @@ shadowJar {
 jar {
     manifest {
         attributes(
-            'Main-Class': 'fi.hsl.transitdata.rata_digitraffic.MainKt'
+            'Main-Class': 'fi.hsl.transitdata.rata_digitraffic.MainKt',
+            'Implementation-Version': project.version
         )
     }
 }
