@@ -21,7 +21,8 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
     private val log = KotlinLogging.logger {}
 
     private val consumer: Consumer<ByteArray> = context.consumer
-    private val producer: Producer<ByteArray> = context.producer
+    private val tripUpdateProducer: Producer<ByteArray> = context.producers["feedmessage-tripupdate"]!!
+    private val trainCancellationProducer: Producer<ByteArray> = context.producers["feedmessage-train-cancelled"]!!
 
     override fun handleMessage(received: Message<Any>) {
         try {
@@ -38,6 +39,9 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
                 if (tripUpdate != null) {
                     sendPulsarMessage(received.messageId, tripUpdate, timestamp)
                     //println("Built trip update: $tripUpdate")
+                    if(train.cancelledOrDeleted){
+                        sendTrainCancellationPulsarMessage(received.messageId, tripUpdate, timestamp)
+                    }
                 } else {
                     log.warn("No trip update built for train {}", train.trainNumber)
                 }
@@ -60,8 +64,26 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
                 .thenRun {}
     }
 
+    private fun sendTrainCancellationPulsarMessage(received: MessageId, tripUpdate: GtfsRealtime.FeedMessage, timestamp: Long) {
+        trainCancellationProducer.newMessage() //.key(dvjId) //TODO think about this
+                .eventTime(timestamp)
+                .property(TransitdataProperties.KEY_PROTOBUF_SCHEMA, TransitdataProperties.ProtobufSchema.GTFS_TripUpdate.toString())
+                .value(tripUpdate.toByteArray())
+                .sendAsync()
+                .whenComplete { id: MessageId?, t: Throwable? ->
+                    if (t != null) {
+                        log.error("Failed to send Pulsar message", t)
+                        //Should we abort?
+                    } else {
+                        //Does this become a bottleneck? Does pulsar send more messages before we ack the previous one?
+                        //If yes we need to get rid of this
+                        ack(received)
+                    }
+                }
+    }
+
     private fun sendPulsarMessage(received: MessageId, tripUpdate: GtfsRealtime.FeedMessage, timestamp: Long) {
-        producer.newMessage() //.key(dvjId) //TODO think about this
+        tripUpdateProducer.newMessage() //.key(dvjId) //TODO think about this
                 .eventTime(timestamp)
                 .property(TransitdataProperties.KEY_PROTOBUF_SCHEMA, TransitdataProperties.ProtobufSchema.GTFS_TripUpdate.toString())
                 .value(tripUpdate.toByteArray())
