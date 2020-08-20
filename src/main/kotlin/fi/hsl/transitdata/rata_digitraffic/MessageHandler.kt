@@ -6,6 +6,7 @@ import fi.hsl.common.pulsar.IMessageHandler
 import fi.hsl.common.pulsar.PulsarApplicationContext
 import fi.hsl.common.transitdata.TransitdataProperties
 import fi.hsl.common.transitdata.TransitdataSchema
+import fi.hsl.common.transitdata.proto.InternalMessages
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.Train
 import fi.hsl.transitdata.rata_digitraffic.utils.JsonHelper
 import mu.KotlinLogging
@@ -40,7 +41,10 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
                     sendPulsarMessage(received.messageId, tripUpdate, timestamp)
                     //println("Built trip update: $tripUpdate")
                     if(train.cancelledOrDeleted){
-                        sendTrainCancellationPulsarMessage(received.messageId, tripUpdate, timestamp)
+                        val tripCancellation = TripCancellationBuilder(doiTripMatcher).buildTripCancellation(train)
+                        if(tripCancellation != null){
+                            sendTrainCancellationPulsarMessage(received.messageId, tripCancellation, timestamp)
+                        }
                     }
                 } else {
                     log.warn("No trip update built for train {}", train.trainNumber)
@@ -64,11 +68,11 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
                 .thenRun {}
     }
 
-    private fun sendTrainCancellationPulsarMessage(received: MessageId, tripUpdate: GtfsRealtime.FeedMessage, timestamp: Long) {
+    private fun sendTrainCancellationPulsarMessage(received: MessageId, tripCancellation: InternalMessages.TripCancellation, timestamp: Long) {
         trainCancellationProducer.newMessage() //.key(dvjId) //TODO think about this
                 .eventTime(timestamp)
-                .property(TransitdataProperties.KEY_PROTOBUF_SCHEMA, TransitdataProperties.ProtobufSchema.GTFS_TripUpdate.toString())
-                .value(tripUpdate.toByteArray())
+                .property(TransitdataProperties.KEY_PROTOBUF_SCHEMA, TransitdataProperties.ProtobufSchema.InternalMessagesTripCancellation.toString())
+                .value(tripCancellation.toByteArray())
                 .sendAsync()
                 .whenComplete { id: MessageId?, t: Throwable? ->
                     if (t != null) {
