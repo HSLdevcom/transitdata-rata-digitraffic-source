@@ -46,6 +46,9 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
                             sendTrainCancellationPulsarMessage(received.messageId, tripCancellation, timestamp)
                         }
                     }
+                    //Does this become a bottleneck? Does pulsar send more messages before we ack the previous one?
+                    //If yes we need to get rid of this
+                    ack(received.messageId)
                 } else {
                     log.warn("No trip update built for train {}", train.trainNumber)
                 }
@@ -78,10 +81,6 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
                     if (t != null) {
                         log.error("Failed to send Pulsar message", t)
                         //Should we abort?
-                    } else {
-                        //Does this become a bottleneck? Does pulsar send more messages before we ack the previous one?
-                        //If yes we need to get rid of this
-                        ack(received)
                     }
                 }
     }
@@ -96,10 +95,6 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
                     if (t != null) {
                         log.error("Failed to send Pulsar message", t)
                         //Should we abort?
-                    } else {
-                        //Does this become a bottleneck? Does pulsar send more messages before we ack the previous one?
-                        //If yes we need to get rid of this
-                        ack(received)
                     }
                 }
     }

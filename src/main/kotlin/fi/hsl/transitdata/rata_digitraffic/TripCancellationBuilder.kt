@@ -1,13 +1,7 @@
 package fi.hsl.transitdata.rata_digitraffic
 
-import com.google.transit.realtime.GtfsRealtime
-import fi.hsl.common.gtfsrt.FeedMessageFactory
-import fi.hsl.common.transitdata.JoreDateTime
 import fi.hsl.common.transitdata.proto.InternalMessages.TripCancellation
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.Train
-import mu.KotlinLogging
-import java.time.Instant
-import java.util.function.Consumer
 
 class TripCancellationBuilder(private val doiTripMatcher: DoiTripMatcher) {
 
@@ -20,6 +14,10 @@ class TripCancellationBuilder(private val doiTripMatcher: DoiTripMatcher) {
                 .setDirectionId(tripInfo.directionId)
                 .setStartDate(tripInfo.startDate)
                 .setStartTime(tripInfo.startTime)
+                .setStatus(TripCancellation.Status.CANCELED)
+
+        //Version number is defined in the proto file as default value but we still need to set it since it's a required field
+        builder.schemaVersion = builder.schemaVersion
 
         return builder.build()
     }
