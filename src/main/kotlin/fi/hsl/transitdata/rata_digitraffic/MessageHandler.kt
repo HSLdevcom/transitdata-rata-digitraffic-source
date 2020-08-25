@@ -40,11 +40,10 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
                 if (tripUpdate != null) {
                     sendPulsarMessage(received.messageId, tripUpdate, timestamp)
                     //println("Built trip update: $tripUpdate")
-                    if(train.cancelledOrDeleted){
-                        val tripCancellation = TripCancellationBuilder(doiTripMatcher).buildTripCancellation(train)
-                        if(tripCancellation != null){
-                            sendTrainCancellationPulsarMessage(received.messageId, tripCancellation, timestamp)
-                        }
+                    val tripCancellation = TripCancellationBuilder(doiTripMatcher).buildTripCancellation(train)
+                    if(tripCancellation != null){
+                        //Always send a train cancellation message, even if the train is not cancelled. This covers the cancellation of cancellation use case
+                        sendTrainCancellationPulsarMessage(received.messageId, tripCancellation, timestamp)
                     }
                     //Does this become a bottleneck? Does pulsar send more messages before we ack the previous one?
                     //If yes we need to get rid of this

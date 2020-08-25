@@ -14,7 +14,7 @@ class TripCancellationBuilder(private val doiTripMatcher: DoiTripMatcher) {
                 .setDirectionId(tripInfo.directionId)
                 .setStartDate(tripInfo.startDate)
                 .setStartTime(tripInfo.startTime)
-                .setStatus(TripCancellation.Status.CANCELED)
+                .setStatus(if(train.cancelledOrDeleted) TripCancellation.Status.CANCELED else TripCancellation.Status.RUNNING)
 
         //Version number is defined in the proto file as default value but we still need to set it since it's a required field
         builder.schemaVersion = builder.schemaVersion

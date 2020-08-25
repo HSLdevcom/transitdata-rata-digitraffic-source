@@ -1,15 +1,19 @@
 package fi.hsl.transitdata.rata_digitraffic
 
 import com.google.protobuf.ByteString
+import com.google.protobuf.CodedInputStream
 import com.nhaarman.mockitokotlin2.any
+import com.nhaarman.mockitokotlin2.argThat
 import com.nhaarman.mockitokotlin2.doReturn
 import com.nhaarman.mockitokotlin2.mock
 import fi.hsl.common.mqtt.proto.Mqtt
 import fi.hsl.common.pulsar.PulsarApplicationContext
+import fi.hsl.common.transitdata.proto.InternalMessages
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.Train
 import fi.hsl.transitdata.rata_digitraffic.model.doi.StopPoint
 import fi.hsl.transitdata.rata_digitraffic.model.doi.TripInfo
 import org.apache.pulsar.client.api.*
+import org.apache.pulsar.shade.io.netty.handler.codec.protobuf.ProtobufDecoder
 import org.junit.Before
 import org.junit.BeforeClass
 import org.junit.Test
@@ -31,11 +35,20 @@ class MessageHandlerTest {
     lateinit var messageHandler : MessageHandler
     lateinit var doiStopMatcher: DoiStopMatcher
     lateinit var doiTripMatcher: DoiTripMatcher
+    lateinit var tripUpdateMockTypeMessageBuilder : TypedMessageBuilder<ByteArray>
+    lateinit var trainCancellationMockTypeMessageBuilder : TypedMessageBuilder<ByteArray>
 
     @Before
     fun before(){
 
-        val mockTypeMessageBuilder = mock<TypedMessageBuilder<ByteArray>>{
+        tripUpdateMockTypeMessageBuilder = mock<TypedMessageBuilder<ByteArray>>{
+            on{eventTime(any<Long>())} doReturn (it)
+            on{property(any<String>(), any<String>())} doReturn(it)
+            on{ value(any())} doReturn (it)
+            on{sendAsync()} doReturn (CompletableFuture())
+        }
+
+        trainCancellationMockTypeMessageBuilder = mock<TypedMessageBuilder<ByteArray>>{
             on{eventTime(any<Long>())} doReturn (it)
             on{property(any<String>(), any<String>())} doReturn(it)
             on{ value(any())} doReturn (it)
@@ -46,10 +59,10 @@ class MessageHandlerTest {
             on{acknowledgeAsync(any<MessageId>())} doReturn (CompletableFuture<Void>())
         }
         mockTripUpdateProducer = mock<Producer<ByteArray>>{
-            on{newMessage()} doReturn (mockTypeMessageBuilder)
+            on{newMessage()} doReturn (tripUpdateMockTypeMessageBuilder)
         }
         mockTrainCancellationProducer = mock<Producer<ByteArray>>{
-            on{newMessage()} doReturn (mockTypeMessageBuilder)
+            on{newMessage()} doReturn (trainCancellationMockTypeMessageBuilder)
         }
         doiStopMatcher = mock<DoiStopMatcher>{
             on{getStopPointForStationAndTrack(any<String>(), any<Int>())} doReturn StopPoint("1000", "dummy stop", 12.34, 56.78)
@@ -103,6 +116,12 @@ class MessageHandlerTest {
         messageHandler.handleMessage(message)
         Mockito.verify(mockConsumer, Mockito.times(2)).acknowledgeAsync(any<MessageId>())
         Mockito.verify(mockTripUpdateProducer, Mockito.times(1)).newMessage()
+        Mockito.verify(trainCancellationMockTypeMessageBuilder).value(argThat{
+            val tripCancellation = InternalMessages.TripCancellation.parseFrom(this)
+            tripCancellation.status == InternalMessages.TripCancellation.Status.RUNNING
+
+        })
+        Mockito.verify(mockTrainCancellationProducer, Mockito.times(1)).newMessage()
     }
 
 
@@ -112,6 +131,11 @@ class MessageHandlerTest {
         messageHandler.handleMessage(message)
         Mockito.verify(mockConsumer, Mockito.times(2)).acknowledgeAsync(any<MessageId>())
         Mockito.verify(mockTripUpdateProducer, Mockito.times(1)).newMessage()
+        Mockito.verify(trainCancellationMockTypeMessageBuilder).value(argThat{
+            val tripCancellation = InternalMessages.TripCancellation.parseFrom(this)
+            tripCancellation.status == InternalMessages.TripCancellation.Status.CANCELED
+
+        })
         Mockito.verify(mockTrainCancellationProducer, Mockito.times(1)).newMessage()
     }
 }
