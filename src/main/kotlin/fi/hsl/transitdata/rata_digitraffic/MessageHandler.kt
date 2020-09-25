@@ -21,9 +21,9 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
 
     private val log = KotlinLogging.logger {}
 
-    private val consumer: Consumer<ByteArray> = context.consumer
-    private val tripUpdateProducer: Producer<ByteArray> = context.producers["feedmessage-tripupdate"]!!
-    private val trainCancellationProducer: Producer<ByteArray> = context.producers["feedmessage-train-cancelled"]!!
+    private val consumer: Consumer<ByteArray> = context.consumer!!
+    private val tripUpdateProducer: Producer<ByteArray> = context.producers?.get("feedmessage-tripupdate")!!
+    private val trainCancellationProducer: Producer<ByteArray> = context.producers?.get("feedmessage-train-cancelled")!!
 
     override fun handleMessage(received: Message<Any>) {
         try {
