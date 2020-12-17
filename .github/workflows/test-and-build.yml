@@ -23,7 +23,7 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: transitdata-rata-digitraffic-source.jar
-          path: target/transitdata-rata-digitraffic-source.jar
+          path: build/transitdata-rata-digitraffic-source.jar
   build-develop-docker-image:
     needs: test
     runs-on: ubuntu-latest
@@ -35,7 +35,7 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           name: transitdata-rata-digitraffic-source.jar
-          path: target
+          path: build
       - name: Build and publish develop Docker image
         uses: elgohr/Publish-Docker-Github-Action@master
         with:
@@ -54,7 +54,7 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           name: transitdata-rata-digitraffic-source.jar
-          path: target
+          path: build
       - name: Build and publish release Docker image
         uses: elgohr/Publish-Docker-Github-Action@master
         with:
