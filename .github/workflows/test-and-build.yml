@@ -17,8 +17,8 @@ jobs:
           path: ~/.m2
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2
-      - name: Build with Maven
-        run: mvn --file pom.xml clean install
+      - name: Build with gradle
+        run: ./gradlew shadowJar
       - name: Upload .jar file
         uses: actions/upload-artifact@v2
         with:
