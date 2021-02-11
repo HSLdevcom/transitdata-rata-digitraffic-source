@@ -45,9 +45,6 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
                         //Always send a train cancellation message, even if the train is not cancelled. This covers the cancellation of cancellation use case
                         sendTrainCancellationPulsarMessage(received.messageId, tripCancellation, timestamp)
                     }
-                    //Does this become a bottleneck? Does pulsar send more messages before we ack the previous one?
-                    //If yes we need to get rid of this
-                    ack(received.messageId)
                 } else {
                     log.warn("No trip update built for train {}", train.trainNumber)
                 }
