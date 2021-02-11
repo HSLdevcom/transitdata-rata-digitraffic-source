@@ -6,6 +6,7 @@ import fi.hsl.common.pulsar.IMessageHandler
 import fi.hsl.common.pulsar.PulsarApplicationContext
 import fi.hsl.common.transitdata.TransitdataProperties
 import fi.hsl.common.transitdata.TransitdataSchema
+import fi.hsl.common.transitdata.proto.InternalMessages
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.Train
 import fi.hsl.transitdata.rata_digitraffic.utils.JsonHelper
 import mu.KotlinLogging
@@ -20,8 +21,9 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
 
     private val log = KotlinLogging.logger {}
 
-    private val consumer: Consumer<ByteArray> = context.consumer
-    private val producer: Producer<ByteArray> = context.producer
+    private val consumer: Consumer<ByteArray> = context.consumer!!
+    private val tripUpdateProducer: Producer<ByteArray> = context.producers?.get("feedmessage-tripupdate")!!
+    private val trainCancellationProducer: Producer<ByteArray> = context.producers?.get("feedmessage-train-cancelled")!!
 
     override fun handleMessage(received: Message<Any>) {
         try {
@@ -38,6 +40,14 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
                 if (tripUpdate != null) {
                     sendPulsarMessage(received.messageId, tripUpdate, timestamp)
                     //println("Built trip update: $tripUpdate")
+                    val tripCancellation = TripCancellationBuilder(doiTripMatcher).buildTripCancellation(train)
+                    if(tripCancellation != null){
+                        //Always send a train cancellation message, even if the train is not cancelled. This covers the cancellation of cancellation use case
+                        sendTrainCancellationPulsarMessage(received.messageId, tripCancellation, timestamp)
+                    }
+                    //Does this become a bottleneck? Does pulsar send more messages before we ack the previous one?
+                    //If yes we need to get rid of this
+                    ack(received.messageId)
                 } else {
                     log.warn("No trip update built for train {}", train.trainNumber)
                 }
@@ -60,8 +70,22 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
                 .thenRun {}
     }
 
+    private fun sendTrainCancellationPulsarMessage(received: MessageId, tripCancellation: InternalMessages.TripCancellation, timestamp: Long) {
+        trainCancellationProducer.newMessage() //.key(dvjId) //TODO think about this
+                .eventTime(timestamp)
+                .property(TransitdataProperties.KEY_PROTOBUF_SCHEMA, TransitdataProperties.ProtobufSchema.InternalMessagesTripCancellation.toString())
+                .value(tripCancellation.toByteArray())
+                .sendAsync()
+                .whenComplete { id: MessageId?, t: Throwable? ->
+                    if (t != null) {
+                        log.error("Failed to send Pulsar message", t)
+                        //Should we abort?
+                    }
+                }
+    }
+
     private fun sendPulsarMessage(received: MessageId, tripUpdate: GtfsRealtime.FeedMessage, timestamp: Long) {
-        producer.newMessage() //.key(dvjId) //TODO think about this
+        tripUpdateProducer.newMessage() //.key(dvjId) //TODO think about this
                 .eventTime(timestamp)
                 .property(TransitdataProperties.KEY_PROTOBUF_SCHEMA, TransitdataProperties.ProtobufSchema.GTFS_TripUpdate.toString())
                 .value(tripUpdate.toByteArray())
@@ -70,10 +94,6 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
                     if (t != null) {
                         log.error("Failed to send Pulsar message", t)
                         //Should we abort?
-                    } else {
-                        //Does this become a bottleneck? Does pulsar send more messages before we ack the previous one?
-                        //If yes we need to get rid of this
-                        ack(received)
                     }
                 }
     }

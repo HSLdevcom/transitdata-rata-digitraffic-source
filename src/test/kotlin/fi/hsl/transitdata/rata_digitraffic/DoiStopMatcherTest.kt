@@ -1,14 +1,21 @@
 package fi.hsl.transitdata.rata_digitraffic
 
+import com.nhaarman.mockitokotlin2.any
+import com.nhaarman.mockitokotlin2.doReturn
+import com.nhaarman.mockitokotlin2.mock
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.Station
 import fi.hsl.transitdata.rata_digitraffic.model.doi.StopPoint
+import fi.hsl.transitdata.rata_digitraffic.source.DoiSource
+import kotlinx.coroutines.runBlocking
 
 import org.junit.Assert.*
 import org.junit.Test
 
+import java.time.LocalDate
+
 class DoiStopMatcherTest {
     @Test
-    fun `Stop point is found with station short code and track number`() {
+    fun `Stop point is found with station short code and track number`() = runBlocking{
         val doiStops = listOf(
                 StopPoint("1", "1-3", 0.0, 0.0),
                 StopPoint("2", "4-5", 0.0, 0.0),
@@ -21,7 +28,11 @@ class DoiStopMatcherTest {
                 Station(true, "B", 1.0, 1.0)
         )
 
-        val doiStopMatcher = DoiStopMatcher(doiStops, stations)
+        val doiSourceMock = mock<DoiSource>{
+            onBlocking {getStopPointsForRailwayStations(any())} doReturn doiStops
+        }
+
+        val doiStopMatcher = DoiStopMatcher.newInstance(doiSourceMock, stations)
 
         val stationATrack1 = doiStopMatcher.getStopPointForStationAndTrack("A", 1)
         val stationBTrack2 = doiStopMatcher.getStopPointForStationAndTrack("B", 2)
