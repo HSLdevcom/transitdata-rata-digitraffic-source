@@ -28,11 +28,7 @@ class DoiStopMatcherTest {
                 Station(true, "B", 1.0, 1.0)
         )
 
-        val doiSourceMock = mock<DoiSource>{
-            onBlocking {getStopPointsForRailwayStations(any())} doReturn doiStops
-        }
-
-        val doiStopMatcher = DoiStopMatcher.newInstance(doiSourceMock, stations)
+        val doiStopMatcher = DoiStopMatcher(doiStops, stations)
 
         val stationATrack1 = doiStopMatcher.getStopPointForStationAndTrack("A", 1)
         val stationBTrack2 = doiStopMatcher.getStopPointForStationAndTrack("B", 2)

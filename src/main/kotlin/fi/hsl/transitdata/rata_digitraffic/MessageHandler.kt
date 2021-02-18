@@ -25,6 +25,11 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
     private val tripUpdateProducer: Producer<ByteArray> = context.producers?.get("feedmessage-tripupdate")!!
     private val trainCancellationProducer: Producer<ByteArray> = context.producers?.get("feedmessage-train-cancelled")!!
 
+    fun updateDoiMatchers(doiStopMatcher: DoiStopMatcher, doiTripMatcher: DoiTripMatcher) {
+        this.doiStopMatcher = doiStopMatcher
+        this.doiTripMatcher = doiTripMatcher
+    }
+
     override fun handleMessage(received: Message<Any>) {
         try {
             if (TransitdataSchema.hasProtobufSchema(received, TransitdataProperties.ProtobufSchema.MqttRawMessage)) {

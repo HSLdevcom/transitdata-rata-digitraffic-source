@@ -3,49 +3,13 @@ package fi.hsl.transitdata.rata_digitraffic
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.TimetableRow
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.Train
 import fi.hsl.transitdata.rata_digitraffic.model.doi.TripInfo
-import fi.hsl.transitdata.rata_digitraffic.source.DoiSource
 import kotlinx.coroutines.*
-import kotlinx.coroutines.time.delay
 import mu.KotlinLogging
-import java.time.Duration
-import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 
-class DoiTripMatcher(private val zoneId: ZoneId, private val doiQueryFutureDays: Int, private val doiSource : DoiSource, private val doiStopMatcher: DoiStopMatcher) {
+class DoiTripMatcher(private val zoneId: ZoneId, private val doiTrips: Collection<TripInfo>, private val doiStopMatcher: DoiStopMatcher) {
     private val log = KotlinLogging.logger {}
-    private lateinit var doiTrips: Collection<TripInfo>
-
-    companion object{
-        fun newInstance(zoneId: ZoneId, queryFutureDays: Int, doiSource : DoiSource, doiStopMatcher: DoiStopMatcher) : DoiTripMatcher{
-            val doiTripMatcher = DoiTripMatcher(zoneId, queryFutureDays, doiSource, doiStopMatcher)
-            doiTripMatcher.resetCollections()
-            GlobalScope.launch(Dispatchers.IO){
-                while(true){
-                    val tomorrow = LocalDateTime.now().plusDays(1).withHour(0).withMinute(0).withSecond(0)
-                    val now = LocalDateTime.now()
-                    delay(Duration.between(now, tomorrow))
-                    doiTripMatcher.resetCollectionsAsync()
-                }
-            }.start()
-            return doiTripMatcher
-        }
-    }
-
-    fun resetCollections(){
-        log.debug("Reset collections")
-        runBlocking{
-            withContext(Dispatchers.IO){
-                resetCollectionsAsync()
-            }
-        }
-    }
-
-    suspend fun resetCollectionsAsync(){
-        log.debug("Reset collections async")
-        doiTrips = doiSource.getTrainTrips(LocalDate.now(), doiQueryFutureDays.toLong())
-        log.debug("Reset collections async done")
-    }
 
     fun matchTrainToTrip(train: Train): TripInfo? {
         val possibleTrips = doiTrips.filter { trip ->
