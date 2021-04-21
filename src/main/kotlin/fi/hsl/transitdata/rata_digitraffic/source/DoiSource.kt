@@ -1,5 +1,6 @@
 package fi.hsl.transitdata.rata_digitraffic.source
 
+import fi.hsl.transitdata.rata_digitraffic.model.doi.JourneyPatternStop
 import fi.hsl.transitdata.rata_digitraffic.model.doi.StopPoint
 import fi.hsl.transitdata.rata_digitraffic.model.doi.TripInfo
 import fi.hsl.transitdata.rata_digitraffic.utils.iterator
@@ -28,15 +29,29 @@ class DoiSource(private val connection: Connection) {
 
         private const val TRIP_QUERY = """
             SELECT
-                DISTINCT CONVERT(CHAR(16), DVJ.Id) AS dvj_id,
+                DISTINCT CONVERT(CHAR(16),
+                DVJ.Id) AS dvj_id,
                 KVV.StringValue AS route,
                 L.Designation AS commuter_line_id,
                 DOL.DirectionCode AS direction,
-                CONVERT(CHAR(8), DVJ.OperatingDayDate, 112) AS operating_day,
-                RIGHT('0' + (CONVERT(VARCHAR(2), (DATEDIFF(HOUR, '1900-01-01', VJ.PlannedStartOffsetDateTime)))), 2) + ':' + RIGHT('0' + CONVERT(VARCHAR(2), ((DATEDIFF(MINUTE, '1900-01-01', VJ.PlannedStartOffsetDateTime)) - ((DATEDIFF(HOUR, '1900-01-01', VJ.PlannedStartOffsetDateTime) * 60)))), 2) + ':00' AS start_time,
-                RIGHT('0' + (CONVERT(VARCHAR(2), (DATEDIFF(HOUR, '1900-01-01', VJ.PlannedEndOffsetDateTime )))), 2) + ':' + RIGHT('0' + CONVERT(VARCHAR(2), ((DATEDIFF(MINUTE, '1900-01-01', VJ.PlannedEndOffsetDateTime )) - ((DATEDIFF(HOUR, '1900-01-01', VJ.PlannedEndOffsetDateTime ) * 60)))), 2) + ':00' AS end_time,
-                CONVERT(CHAR(7), START_JPP.Number) AS start_stop_number,
-                CONVERT(CHAR(7), END_JPP.Number) AS end_stop_number
+                CONVERT(CHAR(8),
+                DVJ.OperatingDayDate,
+                112) AS operating_day,
+                RIGHT('0' + (CONVERT(VARCHAR(2),
+                (DATEDIFF(HOUR, '1900-01-01', VJ.PlannedStartOffsetDateTime)))),
+                2) + ':' + RIGHT('0' + CONVERT(VARCHAR(2),
+                ((DATEDIFF(MINUTE, '1900-01-01', VJ.PlannedStartOffsetDateTime)) - ((DATEDIFF(HOUR, '1900-01-01', VJ.PlannedStartOffsetDateTime) * 60)))),
+                2) + ':00' AS start_time,
+                RIGHT('0' + (CONVERT(VARCHAR(2),
+                (DATEDIFF(HOUR, '1900-01-01', VJ.PlannedEndOffsetDateTime )))),
+                2) + ':' + RIGHT('0' + CONVERT(VARCHAR(2),
+                ((DATEDIFF(MINUTE, '1900-01-01', VJ.PlannedEndOffsetDateTime )) - ((DATEDIFF(HOUR, '1900-01-01', VJ.PlannedEndOffsetDateTime ) * 60)))),
+                2) + ':00' AS end_time,
+                CONVERT(CHAR(7),
+                START_JPP.Number) AS start_stop_number,
+                CONVERT(CHAR(7),
+                END_JPP.Number) AS end_stop_number,
+                CONVERT(CHAR(16), JP.Id) AS journey_pattern_id
             FROM
                 ptDOI4_Community.dbo.DatedVehicleJourney AS DVJ
             LEFT JOIN ptDOI4_Community.dbo.VehicleJourney AS VJ ON
@@ -46,7 +61,7 @@ class DoiSource(private val connection: Connection) {
             LEFT JOIN ptDOI4_Community.dbo.DirectionOfLine AS DOL ON
                 VJT.IsWorkedOnDirectionOfLineGid = DOL.Gid
             LEFT JOIN ptDOI4_Community.dbo.Line AS L ON
-                DOL.IsOnLineId = L.Id 
+                DOL.IsOnLineId = L.Id
             LEFT JOIN ptDOI4_Community.T.KeyVariantValue AS KVV ON
                 (KVV.IsForObjectId = VJ.Id)
             LEFT JOIN ptDOI4_Community.dbo.KeyVariantType AS KVT ON
@@ -59,6 +74,10 @@ class DoiSource(private val connection: Connection) {
                 (VJT.StartsAtJourneyPatternPointGid = START_JPP.Gid)
             LEFT JOIN ptDOI4_Community.dbo.JourneyPatternPoint AS END_JPP ON
                 (VJT.EndsAtJourneyPatternPointGid = END_JPP.Gid)
+            LEFT JOIN ptDOI4_Community.dbo.NamedJourneyPattern AS NJP ON
+                VJT.UsesNamedJourneyPatternGid = NJP.Gid
+            LEFT JOIN ptDOI4_Community.dbo.JourneyPattern AS JP ON
+                NJP.IsJourneyPatternId = JP.Id
             WHERE
                 (KT.Name = 'JoreIdentity'
                     OR KT.Name = 'JoreRouteIdentity'
@@ -69,6 +88,35 @@ class DoiSource(private val connection: Connection) {
                 AND DVJ.OperatingDayDate < ?
                 AND DVJ.IsReplacedById IS NULL
                 AND VJT.TransportModeCode = 'TRAIN'
+        """
+
+        private const val JOURNEY_PATTERN_POINT_QUERY = """
+            SELECT
+                CONVERT(CHAR(16), JP.Id) AS journey_pattern_id,
+                CONVERT(CHAR(7), JPP.[Number]) AS stop_number,
+                PIJP.SequenceNumber AS sequence_number
+            FROM
+                ptDOI4_Community.dbo.VehicleJourneyTemplate AS VJT
+            LEFT JOIN ptDOI4_Community.dbo.NamedJourneyPattern AS NJP ON
+                VJT.UsesNamedJourneyPatternGid = NJP.Gid
+            LEFT JOIN ptDOI4_Community.dbo.JourneyPattern AS JP ON
+                NJP.IsJourneyPatternId = JP.Id
+            LEFT JOIN ptDOI4_Community.dbo.PointInJourneyPattern AS PIJP ON
+                PIJP.IsInJourneyPatternId = JP.Id
+            LEFT JOIN ptDOI4_Community.dbo.JourneyPatternPoint JPP ON
+                PIJP.IsJourneyPatternPointGid = JPP.Gid
+            WHERE
+                VJT.TransportModeCode = 'TRAIN'
+                AND NJP.ExistsFromDate <= ?
+                AND (NJP.ExistsUptoDate > ?
+                    OR NJP.ExistsUptoDate IS NULL)
+                AND JPP.ExistsFromDate <= ?
+                AND (JPP.ExistsUptoDate > ?
+                    OR JPP.ExistsUptoDate IS NULL)
+            GROUP BY JP.Id, JPP.[Number], PIJP.SequenceNumber
+            ORDER BY
+                JP.Id,
+                PIJP.SequenceNumber ASC
         """
     }
 
@@ -106,11 +154,28 @@ class DoiSource(private val connection: Connection) {
                             row.getInt("direction"),
                             row.getString("start_stop_number"),
                             row.getString("end_stop_number"),
-                            row.getString("commuter_line_id")
+                            row.getString("commuter_line_id"),
+                            row.getString("journey_pattern_id")
                         )
                     }
                     .asSequence()
                     .toList()
+        }
+    }
+
+    /**
+     * @return A map of journey pattern IDs to journey pattern stops
+     */
+    suspend fun getJourneyPatternStops(date: LocalDate): Map<String, List<JourneyPatternStop>> = withContext(Dispatchers.IO) {
+        connection.prepareStatement(JOURNEY_PATTERN_POINT_QUERY).use { statement ->
+            statement.setString(1, date.toString())
+            val results = statement.executeQuery()
+
+            return@use results.iterator { row ->
+                    JourneyPatternStop(row.getString("journey_pattern_id"), row.getString("stop_number"), row.getInt("sequence_number"))
+                }
+                .asSequence()
+                .groupBy(keySelector = { journeyPatternStop -> journeyPatternStop.journeyPatternId })
         }
     }
 }
