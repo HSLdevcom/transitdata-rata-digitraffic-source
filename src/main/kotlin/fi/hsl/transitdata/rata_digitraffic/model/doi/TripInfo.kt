@@ -14,7 +14,8 @@ data class TripInfo(
         val directionId: Int,
         val startStopNumber: String,
         val endStopNumber: String,
-        val commuterLineID: String
+        val commuterLineID: String,
+        val journeyPatternId: String
 ) {
     companion object {
         private const val ONE_DAY_IN_SECONDS = 86400L
