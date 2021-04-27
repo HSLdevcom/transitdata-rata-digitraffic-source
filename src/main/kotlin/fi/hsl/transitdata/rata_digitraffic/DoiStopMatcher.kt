@@ -2,7 +2,6 @@ package fi.hsl.transitdata.rata_digitraffic
 
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.Station
 import fi.hsl.transitdata.rata_digitraffic.model.doi.StopPoint
-import kotlinx.coroutines.*
 import mu.KotlinLogging
 import kotlin.math.abs
 import kotlin.math.min
@@ -27,8 +26,7 @@ class DoiStopMatcher(
     private val stationsByShortCode = stations.associateBy(keySelector = { station -> station.stationShortCode })
 
     fun checkIfStationContainsStop(stationShortCode: String, stopNumber: String): Boolean {
-        val doiStops = stationsByShortCode[stationShortCode]?.let { station -> stationToDoiStops[station] }
-        return doiStops?.any { stopPoint -> stopPoint.stopNumber == stopNumber } ?: false
+        return stopNumber in getStopsWithinStation(stationShortCode)
     }
 
     fun getStopPointForStationAndTrack(stationShortCode: String, track: Int): StopPoint? {
@@ -52,5 +50,13 @@ class DoiStopMatcher(
         }
     }
 
-
+    /**
+     * @return Set of stop codes that are within the station
+     */
+    fun getStopsWithinStation(stationShortCode: String): Set<String> {
+        return stationsByShortCode[stationShortCode]
+            ?.let { station -> stationToDoiStops[station] }
+            ?.map { it.stopNumber }
+            ?.toSet() ?: emptySet()
+    }
 }
