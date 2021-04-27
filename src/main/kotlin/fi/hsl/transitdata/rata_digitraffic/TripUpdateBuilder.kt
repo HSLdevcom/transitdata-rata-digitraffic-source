@@ -5,10 +5,17 @@ import fi.hsl.common.gtfsrt.FeedMessageFactory
 import fi.hsl.common.transitdata.RouteIdUtils
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.TimetableRow
 import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.Train
+import fi.hsl.transitdata.rata_digitraffic.model.doi.JourneyPatternStop
 import mu.KotlinLogging
 import java.time.Instant
+import kotlin.math.abs
 
-class TripUpdateBuilder(private val doiStopMatcher: DoiStopMatcher, private val doiTripMatcher: DoiTripMatcher) {
+class TripUpdateBuilder(
+    private val platformChangesEnabled: Boolean,
+    private val doiStopMatcher: DoiStopMatcher,
+    private val doiTripMatcher: DoiTripMatcher,
+    private val journeyPatternStopsById: Map<String, List<JourneyPatternStop>>
+) {
     private val log = KotlinLogging.logger {}
 
     fun buildTripUpdate(train: Train, timestamp: Instant): GtfsRealtime.FeedMessage? {
@@ -36,36 +43,28 @@ class TripUpdateBuilder(private val doiStopMatcher: DoiStopMatcher, private val 
             return FeedMessageFactory.createDifferentialFeedMessage(tripInfo.dvjId, tripUpdateBuilder.build(), timestamp.epochSecond)
         }
 
-        val commercialStopRows = train.timeTableRows.filter { timetableRow -> timetableRow.trainStopping && timetableRow.commercialStop == true }
+        val commercialStopRows = train.timeTableRows.filter { timetableRow -> isCommercialStop(timetableRow) }
 
-        val stopTimeUpdates = mergeTimetableRows(commercialStopRows).mapNotNull { timetableRow ->
-            val stationShortCode = (timetableRow.arrival?.stationShortCode ?: timetableRow.departure?.stationShortCode)
-            val track = (timetableRow.arrival?.commercialTrack ?: timetableRow.departure?.commercialTrack)
+        val stopTimeUpdates = mergeTimetableRows(commercialStopRows).mapIndexedNotNull { stopIndex, timetableRow ->
+            val stationShortCode = (timetableRow.arrival?.stationShortCode ?: timetableRow.departure?.stationShortCode)!!
+            val track = (timetableRow.arrival?.commercialTrack ?: timetableRow.departure?.commercialTrack)?.toIntOrNull()
 
-            //Match station to DOI stop. If the track is unknown, use track 1 to match to any possible stop
-            val doiStop = doiStopMatcher.getStopPointForStationAndTrack(stationShortCode!!, track?.toIntOrNull() ?: 1)
-            if (doiStop == null) {
-                log.warn("No stop found for station {} and track {}", stationShortCode, track)
-                return null
-            }
+            val stopId = getStopNumber(stationShortCode, track, tripInfo.journeyPatternId, stopIndex)
 
             val stopTimeUpdateBuilder = GtfsRealtime.TripUpdate.StopTimeUpdate.newBuilder()
-                    .setStopId(doiStop.stopNumber)
+                    .setStopId(stopId)
 
-            if (timetableRow.isCancelled) {
-                return@mapNotNull stopTimeUpdateBuilder.setScheduleRelationship(GtfsRealtime.TripUpdate.StopTimeUpdate.ScheduleRelationship.SKIPPED).build()
-            } else if (timetableRow.arrival?.liveEstimateTime == null
-                    && timetableRow.arrival?.actualTime == null
-                    && timetableRow.departure?.liveEstimateTime == null
-                    && timetableRow.departure?.actualTime == null) {
-                return@mapNotNull stopTimeUpdateBuilder.setScheduleRelationship(GtfsRealtime.TripUpdate.StopTimeUpdate.ScheduleRelationship.NO_DATA).build()
-            } else {
+            if (!timetableRow.hasRealtimeData) {
+                stopTimeUpdateBuilder.setScheduleRelationship(GtfsRealtime.TripUpdate.StopTimeUpdate.ScheduleRelationship.NO_DATA).build()
+            } else if (timetableRow.isCancelled) {
+                stopTimeUpdateBuilder.setScheduleRelationship(GtfsRealtime.TripUpdate.StopTimeUpdate.ScheduleRelationship.SKIPPED).build()
+            } else  {
                 val arrival = timetableRow.arrival?.let { timetableRowToStopTimeEvent(it) }
                 val departure = timetableRow.departure?.let { timetableRowToStopTimeEvent(it) }
 
-                return@mapNotNull stopTimeUpdateBuilder
+                stopTimeUpdateBuilder
                         .setScheduleRelationship(GtfsRealtime.TripUpdate.StopTimeUpdate.ScheduleRelationship.SCHEDULED)
-                        .setArrival((arrival ?: departure)!!)
+                        .setArrival((arrival ?: departure)!!) //Use departure data for arrival (and vice versa) if no arrival data is not available
                         .setDeparture((departure ?: arrival)!!)
                         .build()
             }
@@ -75,6 +74,37 @@ class TripUpdateBuilder(private val doiStopMatcher: DoiStopMatcher, private val 
 
         return FeedMessageFactory.createDifferentialFeedMessage(tripInfo.dvjId, tripUpdateBuilder.build(), timestamp.epochSecond)
     }
+
+    private fun getStopNumber(stationShortCode: String, track: Int?, journeyPatternId: String, timetableRowIndex: Int): String? {
+        return if (platformChangesEnabled) {
+            //If platform changes feature is enabled, try to find stop ID for the new platform
+
+            //Match station to DOI stop. If the track is unknown, use track 1 to match to any possible stop
+            val doiStop = doiStopMatcher.getStopPointForStationAndTrack(stationShortCode, track ?: 1)
+            if (doiStop == null) {
+                log.warn("No stop found for station {} and track {}", stationShortCode, track)
+            }
+            doiStop?.stopNumber
+        } else {
+            //If platform changes are not enabled, use stop ID from the static schedule
+
+            //List of stop IDs within the station
+            val stopsWithinStation = doiStopMatcher.getStopsWithinStation(stationShortCode)
+            val journeyPatternStops = journeyPatternStopsById[journeyPatternId].orEmpty()
+            val stop = journeyPatternStops
+                .filter { journeyPatternStop -> journeyPatternStop.stopNumber in stopsWithinStation }
+                //Same train can go through same station multiple times through different tracks
+                //-> Try to find stop with same sequence number as the timetable row index
+                .minBy { journeyPatternStop -> abs((timetableRowIndex + 1) - journeyPatternStop.sequenceNumber) }
+            if (stop == null) {
+                log.warn("No stop found for station {} with timetable row index {} from journey pattern {}", stationShortCode, timetableRowIndex, journeyPatternId)
+            }
+
+            stop?.stopNumber
+        }
+    }
+
+    private fun isCommercialStop(timetableRow: TimetableRow) = timetableRow.trainStopping && timetableRow.commercialStop == true
 
     private fun timetableRowToStopTimeEvent(timetableRow: TimetableRow): GtfsRealtime.TripUpdate.StopTimeEvent {
         val builder = GtfsRealtime.TripUpdate.StopTimeEvent.newBuilder()
@@ -109,5 +139,11 @@ class TripUpdateBuilder(private val doiStopMatcher: DoiStopMatcher, private val 
 
         //Timetable row is cancelled if both arrival and departure are cancelled or if other is cancelled and other is null (for first and last rows)
         val isCancelled = (arrival?.cancelled ?: true) && (departure?.cancelled ?: true)
+
+        //True if there are estimates or observed times available
+        val hasRealtimeData = arrival?.liveEstimateTime != null
+                || arrival?.actualTime != null
+                || departure?.liveEstimateTime != null
+                || departure?.actualTime != null
     }
 }
