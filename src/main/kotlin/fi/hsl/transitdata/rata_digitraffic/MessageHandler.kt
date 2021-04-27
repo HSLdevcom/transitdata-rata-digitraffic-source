@@ -15,19 +15,28 @@ import org.apache.pulsar.client.api.Message
 import org.apache.pulsar.client.api.MessageId
 import org.apache.pulsar.client.api.Producer
 import java.time.Instant
+import java.time.ZoneId
 
 
-class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiStopMatcher, var doiTripMatcher: DoiTripMatcher) : IMessageHandler {
-
+class MessageHandler(context: PulsarApplicationContext, private val platformChangesEnabled: Boolean, private val doiTimezone: ZoneId, private var metadata: Metadata) : IMessageHandler {
     private val log = KotlinLogging.logger {}
 
     private val consumer: Consumer<ByteArray> = context.consumer!!
     private val tripUpdateProducer: Producer<ByteArray> = context.producers?.get("feedmessage-tripupdate")!!
     private val trainCancellationProducer: Producer<ByteArray> = context.producers?.get("feedmessage-train-cancelled")!!
 
-    fun updateDoiMatchers(doiStopMatcher: DoiStopMatcher, doiTripMatcher: DoiTripMatcher) {
-        this.doiStopMatcher = doiStopMatcher
-        this.doiTripMatcher = doiTripMatcher
+    private var doiStopMatcher = DoiStopMatcher(metadata.stops, metadata.stations)
+    private var doiTripMatcher = DoiTripMatcher(doiTimezone, metadata.trainTrips, doiStopMatcher)
+
+    private var tripUpdateBuilder = TripUpdateBuilder(platformChangesEnabled, doiStopMatcher, doiTripMatcher, metadata.journeyPatternStops)
+
+    fun updateMetadata(metadata: Metadata) {
+        this.metadata = metadata
+
+        doiStopMatcher = DoiStopMatcher(metadata.stops, metadata.stations)
+        doiTripMatcher = DoiTripMatcher(doiTimezone, metadata.trainTrips, doiStopMatcher)
+
+        tripUpdateBuilder = TripUpdateBuilder(platformChangesEnabled, doiStopMatcher, doiTripMatcher, metadata.journeyPatternStops)
     }
 
     override fun handleMessage(received: Message<Any>) {
@@ -41,7 +50,7 @@ class MessageHandler(context: PulsarApplicationContext, var doiStopMatcher: DoiS
 
                 val train: Train = JsonHelper.parse(rawPayload)
 
-                val tripUpdate = TripUpdateBuilder(doiStopMatcher, doiTripMatcher).buildTripUpdate(train, Instant.ofEpochMilli(timestamp))
+                val tripUpdate = tripUpdateBuilder.buildTripUpdate(train, Instant.ofEpochMilli(timestamp))
                 if (tripUpdate != null) {
                     sendPulsarMessage(received.messageId, tripUpdate, timestamp)
                     //println("Built trip update: $tripUpdate")

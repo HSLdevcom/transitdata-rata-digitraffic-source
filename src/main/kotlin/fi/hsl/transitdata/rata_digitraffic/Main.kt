@@ -3,10 +3,15 @@ package fi.hsl.transitdata.rata_digitraffic
 import fi.hsl.common.config.ConfigParser
 import fi.hsl.common.config.ConfigUtils
 import fi.hsl.common.pulsar.PulsarApplication
+import fi.hsl.transitdata.rata_digitraffic.model.digitraffic.Station
+import fi.hsl.transitdata.rata_digitraffic.model.doi.JourneyPatternStop
+import fi.hsl.transitdata.rata_digitraffic.model.doi.StopPoint
+import fi.hsl.transitdata.rata_digitraffic.model.doi.TripInfo
 import fi.hsl.transitdata.rata_digitraffic.source.DoiSource
 import fi.hsl.transitdata.rata_digitraffic.source.RataDigitrafficStationSource
 import fi.hsl.transitdata.rata_digitraffic.utils.intervalFlow
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.launch
@@ -27,6 +32,8 @@ fun main(vararg args: String) {
     val doiTimezone = ZoneId.of(config.getString("doi.timezone"))
     val doiQueryFutureDays = config.getLong("doi.queryFutureDays")
 
+    val platformChangesEnabled = config.getBoolean("application.platformChangesEnabled")
+
     val httpClient = OkHttpClient()
 
     //Default path is what works with Docker out-of-the-box. Override with a local file if needed
@@ -39,7 +46,6 @@ fun main(vararg args: String) {
             val doiSource = DoiSource(connection)
             val stationSource = RataDigitrafficStationSource(httpClient)
 
-
             PulsarApplication.newInstance(config).use { app ->
                 val context = app.context
                 val healthServer = context.healthServer
@@ -48,29 +54,26 @@ fun main(vararg args: String) {
 
 
                 GlobalScope.launch {
-                    var doiStopMatcher: DoiStopMatcher? = null
-                    var doiTripMatcher: DoiTripMatcher? = null
-
                     intervalFlow(Duration.ofDays(1))
                         //Update metadata daily
                         .mapLatest {
-                            val trainTrips = doiSource.getTrainTrips(LocalDate.now(), doiQueryFutureDays)
-                            val stops = doiSource.getStopPointsForRailwayStations(LocalDate.now())
+                            val today = LocalDate.now()
 
-                            val stations = stationSource.getStations()
+                            val trainTrips = async { doiSource.getTrainTrips(today, doiQueryFutureDays) }
+                            val stops = async { doiSource.getStopPointsForRailwayStations(today) }
+                            val journeyPatternStops = async { doiSource.getJourneyPatternStops(today) }
 
-                            return@mapLatest Triple(trainTrips, stops, stations)
+                            val stations = async { stationSource.getStations() }
+
+                            return@mapLatest Metadata(trainTrips.await(), stops.await(), journeyPatternStops.await(), stations.await())
                         }
-                        .collect { (trainTrips, stops, stations) ->
-                            doiStopMatcher = DoiStopMatcher(stops, stations)
-                            doiTripMatcher = DoiTripMatcher(doiTimezone, trainTrips, doiStopMatcher!!)
-
+                        .collect { metadata ->
                             //Start message processor after metadata is first available
                             if (processor == null) {
-                                processor = MessageHandler(context, doiStopMatcher!!, doiTripMatcher!!)
+                                processor = MessageHandler(context, platformChangesEnabled, doiTimezone, metadata)
                                 app.launchWithHandler(processor!!)
                             } else {
-                                processor!!.updateDoiMatchers(doiStopMatcher!!, doiTripMatcher!!)
+                                processor!!.updateMetadata(metadata)
                             }
                         }
                 }
@@ -80,3 +83,6 @@ fun main(vararg args: String) {
         log.error("Exception at main", e)
     }
 }
+
+//Container class for metadata that is needed to create trip updates for trains
+data class Metadata(val trainTrips: Collection<TripInfo>, val stops: Collection<StopPoint>, val journeyPatternStops: Map<String, List<JourneyPatternStop>>, val stations: Collection<Station>)
