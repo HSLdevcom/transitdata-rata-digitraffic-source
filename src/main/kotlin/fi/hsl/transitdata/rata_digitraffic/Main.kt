@@ -68,10 +68,15 @@ fun main(vararg args: String) {
                             return@mapLatest Metadata(trainTrips.await(), stops.await(), journeyPatternStops.await(), stations.await())
                         }
                         .collect { metadata ->
+                            log.info {
+                                "Metadata updated (${metadata.trainTrips.size} train trips, ${metadata.stops.size} stops, ${metadata.journeyPatternStops.size} journey patterns, ${metadata.stations.size} stations)"
+                            }
+
                             //Start message processor after metadata is first available
                             if (processor == null) {
                                 processor = MessageHandler(context, platformChangesEnabled, doiTimezone, metadata)
                                 app.launchWithHandler(processor!!)
+                                log.info { "Started handling messages" }
                             } else {
                                 processor!!.updateMetadata(metadata)
                             }
