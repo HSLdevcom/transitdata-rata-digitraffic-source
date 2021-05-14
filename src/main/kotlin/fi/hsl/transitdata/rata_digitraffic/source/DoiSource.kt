@@ -9,7 +9,7 @@ import kotlinx.coroutines.withContext
 import java.sql.Connection
 import java.time.LocalDate
 
-class DoiSource(private val connection: Connection) {
+class DoiSource(private val connectionProvider: () -> Connection) {
     companion object {
         private const val STOP_POINT_QUERY = """
             SELECT DISTINCT
@@ -121,45 +121,49 @@ class DoiSource(private val connection: Connection) {
     }
 
     suspend fun getStopPointsForRailwayStations(date: LocalDate): List<StopPoint> = withContext(Dispatchers.IO) {
-        connection.prepareStatement(STOP_POINT_QUERY).use { statement ->
-            (1..6).forEach { i -> statement.setString(i, date.toString()) }
-            val results = statement.executeQuery()
+        connectionProvider().use { connection ->
+            connection.prepareStatement(STOP_POINT_QUERY).use { statement ->
+                (1..6).forEach { i -> statement.setString(i, date.toString()) }
+                val results = statement.executeQuery()
 
-            return@use results.iterator { row ->
-                        StopPoint(
-                            row.getString("stop_number"),
-                            row.getString("track"),
-                            row.getDouble("latitude"),
-                            row.getDouble("longitude")
-                        )
-                    }
-                    .asSequence()
-                    .toList()
+                return@use results.iterator { row ->
+                    StopPoint(
+                        row.getString("stop_number"),
+                        row.getString("track"),
+                        row.getDouble("latitude"),
+                        row.getDouble("longitude")
+                    )
+                }
+                .asSequence()
+                .toList()
+            }
         }
     }
 
     suspend fun getTrainTrips(date: LocalDate, futureDays: Long): List<TripInfo> = withContext(Dispatchers.IO) {
-        connection.prepareStatement(TRIP_QUERY).use { statement ->
-            statement.setString(1, date.toString())
-            statement.setString(2, date.plusDays(futureDays).toString())
-            val results = statement.executeQuery()
+        connectionProvider().use { connection ->
+            connection.prepareStatement(TRIP_QUERY).use { statement ->
+                statement.setString(1, date.toString())
+                statement.setString(2, date.plusDays(futureDays).toString())
+                val results = statement.executeQuery()
 
-            return@use results.iterator { row ->
-                        TripInfo(
-                            row.getString("dvj_id"),
-                            row.getString("route"),
-                            row.getString("operating_day"),
-                            row.getString("start_time"),
-                            row.getString("end_time"),
-                            row.getInt("direction"),
-                            row.getString("start_stop_number"),
-                            row.getString("end_stop_number"),
-                            row.getString("commuter_line_id"),
-                            row.getString("journey_pattern_id")
-                        )
-                    }
-                    .asSequence()
-                    .toList()
+                return@use results.iterator { row ->
+                    TripInfo(
+                        row.getString("dvj_id"),
+                        row.getString("route"),
+                        row.getString("operating_day"),
+                        row.getString("start_time"),
+                        row.getString("end_time"),
+                        row.getInt("direction"),
+                        row.getString("start_stop_number"),
+                        row.getString("end_stop_number"),
+                        row.getString("commuter_line_id"),
+                        row.getString("journey_pattern_id")
+                    )
+                }
+                .asSequence()
+                .toList()
+            }
         }
     }
 
@@ -167,15 +171,17 @@ class DoiSource(private val connection: Connection) {
      * @return A map of journey pattern IDs to journey pattern stops
      */
     suspend fun getJourneyPatternStops(date: LocalDate): Map<String, List<JourneyPatternStop>> = withContext(Dispatchers.IO) {
-        connection.prepareStatement(JOURNEY_PATTERN_POINT_QUERY).use { statement ->
-            statement.setString(1, date.toString())
-            val results = statement.executeQuery()
+        connectionProvider().use { connection ->
+            connection.prepareStatement(JOURNEY_PATTERN_POINT_QUERY).use { statement ->
+                statement.setString(1, date.toString())
+                val results = statement.executeQuery()
 
-            return@use results.iterator { row ->
+                return@use results.iterator { row ->
                     JourneyPatternStop(row.getString("journey_pattern_id"), row.getString("stop_number"), row.getInt("sequence_number"))
                 }
                 .asSequence()
                 .groupBy(keySelector = { journeyPatternStop -> journeyPatternStop.journeyPatternId })
+            }
         }
     }
 }

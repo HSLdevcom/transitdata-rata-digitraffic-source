@@ -17,8 +17,8 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.launch
 import mu.KotlinLogging
 import okhttp3.OkHttpClient
+import org.apache.commons.dbcp2.BasicDataSource
 import java.io.File
-import java.sql.DriverManager
 import java.time.Duration
 import java.time.LocalDate
 import java.time.ZoneId
@@ -41,47 +41,48 @@ fun main(vararg args: String) {
     val connectionString = Scanner(File(secretFilePath))
             .useDelimiter("\\Z").next()
 
+    val connectionPool = BasicDataSource()
+    connectionPool.driverClassName = "com.microsoft.sqlserver.jdbc.SQLServerDriver"
+    connectionPool.url = connectionString
+
     try {
-        DriverManager.getConnection(connectionString).use { connection ->
-            val doiSource = DoiSource(connection)
-            val stationSource = RataDigitrafficStationSource(httpClient)
+        val doiSource = DoiSource(connectionPool::getConnection)
+        val stationSource = RataDigitrafficStationSource(httpClient)
 
-            PulsarApplication.newInstance(config).use { app ->
-                val context = app.context
-                val healthServer = context.healthServer
+        PulsarApplication.newInstance(config).use { app ->
+            val context = app.context
+            val healthServer = context.healthServer
 
-                var processor: MessageHandler? = null
+            var processor: MessageHandler? = null
 
+            GlobalScope.launch {
+                intervalFlow(Duration.ofDays(1))
+                    //Update metadata daily
+                    .mapLatest {
+                        val today = LocalDate.now()
 
-                GlobalScope.launch {
-                    intervalFlow(Duration.ofDays(1))
-                        //Update metadata daily
-                        .mapLatest {
-                            val today = LocalDate.now()
+                        val trainTrips = async { doiSource.getTrainTrips(today, doiQueryFutureDays) }
+                        val stops = async { doiSource.getStopPointsForRailwayStations(today) }
+                        val journeyPatternStops = async { doiSource.getJourneyPatternStops(today) }
 
-                            val trainTrips = async { doiSource.getTrainTrips(today, doiQueryFutureDays) }
-                            val stops = async { doiSource.getStopPointsForRailwayStations(today) }
-                            val journeyPatternStops = async { doiSource.getJourneyPatternStops(today) }
+                        val stations = async { stationSource.getStations() }
 
-                            val stations = async { stationSource.getStations() }
-
-                            return@mapLatest Metadata(trainTrips.await(), stops.await(), journeyPatternStops.await(), stations.await())
+                        return@mapLatest Metadata(trainTrips.await(), stops.await(), journeyPatternStops.await(), stations.await())
+                    }
+                    .collect { metadata ->
+                        log.info {
+                            "Metadata updated (${metadata.trainTrips.size} train trips, ${metadata.stops.size} stops, ${metadata.journeyPatternStops.size} journey patterns, ${metadata.stations.size} stations)"
                         }
-                        .collect { metadata ->
-                            log.info {
-                                "Metadata updated (${metadata.trainTrips.size} train trips, ${metadata.stops.size} stops, ${metadata.journeyPatternStops.size} journey patterns, ${metadata.stations.size} stations)"
-                            }
 
-                            //Start message processor after metadata is first available
-                            if (processor == null) {
-                                processor = MessageHandler(context, platformChangesEnabled, doiTimezone, metadata)
-                                app.launchWithHandler(processor!!)
-                                log.info { "Started handling messages" }
-                            } else {
-                                processor!!.updateMetadata(metadata)
-                            }
+                        //Start message processor after metadata is first available
+                        if (processor == null) {
+                            processor = MessageHandler(context, platformChangesEnabled, doiTimezone, metadata)
+                            app.launchWithHandler(processor!!)
+                            log.info { "Started handling messages" }
+                        } else {
+                            processor!!.updateMetadata(metadata)
                         }
-                }
+                    }
             }
         }
     } catch (e: Exception) {

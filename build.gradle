@@ -47,6 +47,7 @@ dependencies {
     implementation "com.fasterxml.jackson.module:jackson-module-kotlin:2.11.1"
 
     implementation 'com.microsoft.sqlserver:mssql-jdbc:8.2.2.jre8'
+    implementation 'org.apache.commons:commons-dbcp2:2.8.0'
 
     implementation "io.github.microutils:kotlin-logging:1.6.22"
     implementation "com.squareup.okhttp3:okhttp:4.8.0"
