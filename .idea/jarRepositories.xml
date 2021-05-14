@@ -26,5 +26,10 @@
       <option name="name" value="maven" />
       <option name="url" value="https://dl.bintray.com/hsldevcom/maven" />
     </remote-repository>
+    <remote-repository>
+      <option name="id" value="maven" />
+      <option name="name" value="maven" />
+      <option name="url" value="https://maven.pkg.github.com/HSLdevcom/*" />
+    </remote-repository>
   </component>
 </project>
