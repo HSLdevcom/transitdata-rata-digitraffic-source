@@ -174,6 +174,9 @@ class DoiSource(private val connectionProvider: () -> Connection) {
         connectionProvider().use { connection ->
             connection.prepareStatement(JOURNEY_PATTERN_POINT_QUERY).use { statement ->
                 statement.setString(1, date.toString())
+                statement.setString(2, date.toString())
+                statement.setString(3, date.toString())
+                statement.setString(4, date.toString())
                 val results = statement.executeQuery()
 
                 return@use results.iterator { row ->
